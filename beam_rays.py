@@ -31,7 +31,7 @@ cy = [-3000.0] #cy = range(-3750,4125,375)
 top_atm = 1200 + 2575 #km. Must be same as top of atmosphere in eventual NEMESIS model.
 nsig_psf = 2.0 #Used for diskavg = True only. distance past the top of the atmosphere included in the disk average.  units of sigma_psf i.e. 2.0 -> 2sigma_psf
 
-radii = [0.0,500.0,1000.0,1500.0,2000.0,2500.0,2575.0,2600.0,2625.0,2650.0,2675.0,2700.0,2725.0,2750.0,2775.0,2800.0,2825.0,2850.0,2875.0,2900.0,2925.0,2950.0,2975.0,3000.0,3025.0,3050.0,3075.0,3125.0,3175.0,3225.0,3275.0,3325.0,3375.0,3425.0,3525.0,3625.0,3750.0] #radii of annuli in km
+radii = np.asarray([0.0,500.0,1000.0,1500.0,2000.0,2500.0,2575.0,2600.0,2625.0,2650.0,2675.0,2700.0,2725.0,2750.0,2775.0,2800.0,2825.0,2850.0,2875.0,2900.0,2925.0,2950.0,2975.0,3000.0,3025.0,3050.0,3075.0,3125.0,3175.0,3225.0,3275.0,3325.0,3375.0,3425.0,3525.0,3625.0,top_atm]) #radii of annuli in km
 dx = 5 #resolution of model Titan in km. Runtime increases exponentially as this number decreases
 
 
@@ -116,10 +116,12 @@ def computeWeights(cx,cy,xcorr_km,ycorr_km):
     y,x = np.mgrid[xx,xx]
     z = np.sqrt(x**2+y**2) #z now contains radii from the center
     
+    midpoints = 0.5 * (radii[1:] + radii[:-1])
+    
     #Change values of z to the angle corresponding to those radii
-    angles = [np.degrees(np.arcsin(float(r)/float(top_atm))) for r in radii] #top of atmosphere emission angle
-    for i in range(len(radii)):
-        z[np.logical_and(z >= radii[i-1], z < radii[i])] = angles[i]
+    angles = [np.degrees(np.arcsin(float(r)/float(top_atm))) for r in midpoints] #top of atmosphere emission angle
+    for i in range(len(angles)):
+        z[np.logical_and(z >= radii[i], z < radii[i+1])] = angles[i]
     z[z >= radii[-1]] = float('NaN')
 
     #Make Gaussian beam
@@ -376,7 +378,7 @@ with open(outfile,'w') as f:
         f.write(str(len(spec[1]))+'\n')
         f.write(str(len(spec[0]))+'\n')
         for key,val in sorted(spec[0].items()):
-            f.write('      0.00000      0.00000      '+str(key)+'      '+str(key)+'      180.000      '+str(val)+'\n')
+            f.write('      0.00000      0.00000      %7.4f      %7.4f      180.000     %8.6f\n' %(key,key,val))
         for i in range(len(spec[1])):
-            f.write(str(spec[1][i])+'     '+str(spec[2][i])+'     1.00000E-11'+'\n')
+            f.write('%11.9f  %12.5e  1.00000E-11\n' % (spec[1][i],spec[2][i]))
 f.close()
