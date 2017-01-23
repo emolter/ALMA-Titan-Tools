@@ -33,7 +33,7 @@ wtsCutoff = 0.0 #How small of a weighting is too small to put into the .spx head
 top_atm = 1000. + 2575. #km. Must be same as top of atmosphere in eventual NEMESIS model.
 nsig_psf = 2.0 #Distance past the top of the atmosphere to include in the (square) model region, in units of sigma_psf_maj
 ptile = 0.90 # Image flux threshold percentile to define extraction region
-maskChan = 185 # Channel number in input image for defining extraction mask
+maskChan = 185 # Channel number in input image for defining flux threshold mask
 
 #radii = np.asarray([0.,500.,1000.,1500.,2000.,2500.,2600.,2700.,2800.,2900.,3000.,3100.,3200.,3300.,3400.,3500.,top_atm]) #radii of annuli in km - basic accuracy
 radii = np.asarray([0.,500.,1000.,1500.,2000.,2500.,2550.,2600.,2650.,2700.,2750.,2800.,2850.,2900.,2950.,3000.,3050.,3100.,3150.,3200.,3250.,3300.,3350.,3400.,3450.,3500.,top_atm]) #radii of annuli in km - better; accurate for most lines
@@ -288,6 +288,11 @@ def spExT(imgname,ptile,CHAN=1920,XMIN=108,YMIN=108,XMAX=148,YMAX=148,returnMask
     # Return arrays of frequency in GHz and flux    
        return freqspec/1e9,np.asarray(spectrum)
 
+
+# Helper function for spExT to find threshold corresponding to given flux percentile 
+def fluxThreshEq(thresh,image,ptile):
+    masked = np.ma.array(image,mask=image<thresh,fill_value=0.0)
+    return masked.filled().sum() / image.sum() - ptile
 
 
 ######### Functions redefined to work for disk average ##########
