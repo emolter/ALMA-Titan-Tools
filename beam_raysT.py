@@ -5,24 +5,25 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import ticker
 from scipy.signal import fftconvolve
 from scipy.ndimage import zoom
 from scipy.optimize import brentq
-
 
 ####################################################################################################
 ############# input parameters ########################
 ####################################################################################################
 
 ##### Observation Parameters #####
-img = 'X1a75_win1.clean1.image'
-outfile = 'test.spx'
+img = 'Titan.rest488.han.concat.clean0.image'
+outfile = 'Titan.rest488.han.concat.clean0.spx'
 outimg = 'beam_rays.ps' #only used if showplot = True
-Titan_dist = 9.05 #au. Get from delta column in JPL Horizons
-d_shift = -6.90 #km/s. Get from deldot column in JPL Horizons
+Titan_dist = 9.2 #au. Get from delta column in JPL Horizons
+d_shift = 0. #km/s. Get from deldot column in JPL Horizons
 subobslat = 24.7 #degrees. Get from Ob-lat column in JPL Horizons
 ccw = 2.6 #degrees. Get from  NP.ang column in JPL Horizons - counterclockwise from north
+sigma = 5.0e-3 # Spectral noise in Jy
 
 ##### Model Options #####
 showplot = False #Display image of beam overlaid on Titan with latitudes as contours?
@@ -35,8 +36,8 @@ ptile = 0.90 # Image flux threshold percentile to define extraction region
 maskChan = 185 # Channel number in input image for defining extraction mask
 
 #radii = np.asarray([0.,500.,1000.,1500.,2000.,2500.,2600.,2700.,2800.,2900.,3000.,3100.,3200.,3300.,3400.,3500.,top_atm]) #radii of annuli in km - basic accuracy
-#radii = np.asarray([0.,500.,1000.,1500.,2000.,2500.,2550.,2600.,2650.,2700.,2750.,2800.,2850.,2900.,2950.,3000.,3050.,3100.,3150.,3200.,3250.,3300.,3350.,3400.,3450.,3500.,top_atm]) #radii of annuli in km - fair; accurate for most lines
-radii = np.asarray([0.0,500.0,1000.0,1500.0,2000.0,2500.0,2575.0,2600.0,2625.0,2650.0,2675.0,2700.0,2725.0,2750.0,2775.0,2800.0,2825.0,2850.0,2875.0,2900.0,2925.0,2950.0,2975.0,3000.0,3025.0,3050.0,3075.0,3125.0,3175.0,3225.0,3275.0,3325.0,3375.0,3425.0,3525.0,top_atm]) #radii of annuli in km - good; needed for accurate CO line wings
+radii = np.asarray([0.,500.,1000.,1500.,2000.,2500.,2550.,2600.,2650.,2700.,2750.,2800.,2850.,2900.,2950.,3000.,3050.,3100.,3150.,3200.,3250.,3300.,3350.,3400.,3450.,3500.,top_atm]) #radii of annuli in km - better; accurate for most lines
+#radii = np.asarray([0.0,500.0,1000.0,1500.0,2000.0,2500.0,2575.0,2600.0,2625.0,2650.0,2675.0,2700.0,2725.0,2750.0,2775.0,2800.0,2825.0,2850.0,2875.0,2900.0,2925.0,2950.0,2975.0,3000.0,3025.0,3050.0,3075.0,3125.0,3175.0,3225.0,3275.0,3325.0,3375.0,3425.0,3525.0,top_atm]) #radii of annuli in km - best; needed for accurate CO and HCN line wings
 
 dx = 5. #resolution of model Titan in km. Should be << radial intervals. Runtime increases exponentially as this number decreases
 
@@ -50,8 +51,8 @@ dx = 5. #resolution of model Titan in km. Should be << radial intervals. Runtime
 def casa_extract(img):
     #Brings image header info into script using imhead
     cubeheader = imhead(imagename=img,mode='list')
-    (beamx,beamy) = (float(cubeheader['beammajor']['value']),float(cubeheader['beamminor']['value']))
-    theta = float(cubeheader['beampa']['value']) #here theta defined as angle from north to east in degrees
+    #(beamx,beamy) = (float(cubeheader['beammajor']['value']),float(cubeheader['beamminor']['value']))
+    #theta = float(cubeheader['beampa']['value']) #here theta defined as angle from north to east in degrees
     (refx,refy) = (float(cubeheader['crpix1']),float(cubeheader['crpix1'])) #center pixel
     (pixszx,pixszy) = (np.degrees(np.fabs(3600*float(cubeheader['cdelt1']))),np.degrees(np.fabs(3600*float(cubeheader['cdelt2']))))
     nspec = cubeheader['shape'][3] #number of channels
@@ -240,7 +241,6 @@ def wtsReduce(wts,wtsCutoff):
     return wts_new
 
 
-
 def spExT(imgname,ptile,CHAN=1920,XMIN=108,YMIN=108,XMAX=148,YMAX=148,returnMask=False):
     '''Obtain spectrum within region defined by given flux threshold/percentile (ptile) in channel CHAN. Make sure the imval boundaries are reasonable before running!'''
     
@@ -287,14 +287,6 @@ def spExT(imgname,ptile,CHAN=1920,XMIN=108,YMIN=108,XMAX=148,YMAX=148,returnMask
     else:
     # Return arrays of frequency in GHz and flux    
        return freqspec/1e9,np.asarray(spectrum)
-
-    
-
-# Helper function for spExT to find threshold corresponding to given flux percentile 
-def fluxThreshEq(thresh,image,ptile):
-    masked = np.ma.array(image,mask=image<thresh,fill_value=0.0)
-    return masked.filled().sum() / image.sum() - ptile
-    
 
 
 
@@ -351,9 +343,6 @@ ymaxBox = int(leny / 2.) + top_atm_pix + (nsig_psf*sigmaxpix)
 #Extract spectrum and weights
 spx = {}
 
-pixx = refx+j*(beamx/a)*(1/pixszx) #beamx/a is just an easy way to convert km to arcsec
-pixy = refy+i*(beamx/a)*(1/pixszy)
-
 #extract spectrum
 
 (freq,flux,Tmask) = spExT(img,ptile,CHAN=maskChan,XMIN=xminBox,YMIN=yminBox,XMAX=xmaxBox,YMAX=ymaxBox,returnMask=True) 
@@ -365,16 +354,15 @@ flux = jy2rad(flux)
 
 if wtsCutoff > 0:
     wts = wtsReduce(wts,wtsCutoff)
-spx[(j,i)] = (wts,freq,flux,meanlat)
+spx = (wts,freq,flux,meanlat)
 
 #output to file in .spx format
 with open(outfile,'w') as f:
-    for location,spec in sorted(spx.items()):
-        f.write(str(np.float32(2*(spec[1][1]-spec[1][0])))+'     '+str(spec[3])+'     0.0     1\n')
-        f.write(str(len(spec[1]))+'\n')
-        f.write(str(len(spec[0]))+'\n')
-        for key,val in sorted(spec[0].items()):
-            f.write('      0.00000      0.00000      %7.4f      %7.4f      180.000     %8.6f\n' %(key,key,val))
-        for i in range(len(spec[1])):
-            f.write('%11.9f  %12.5e  1.00000E-11\n' % (spec[1][i],spec[2][i]))
+    f.write(str(np.float32(2*(spx[1][1]-spx[1][0])))+'     '+str(spx[3])+'     0.0     1\n')
+    f.write(str(len(spx[1]))+'\n')
+    f.write(str(len(spx[0]))+'\n')
+    for key,val in sorted(spx[0].items()):
+        f.write('      0.00000      0.00000      %7.4f      %7.4f      180.000     %8.6f\n' %(key,key,val))
+    for i in range(len(spx[1])):
+        f.write('%11.9f  %12.5e  %12.5e\n' % (spx[1][i],spx[2][i],jy2rad(sigma)))
 f.close()
