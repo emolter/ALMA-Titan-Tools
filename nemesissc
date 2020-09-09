@@ -1,0 +1,131 @@
+#! /usr/bin/env python
+
+import numpy as np
+import matplotlib.pylab as plt
+import matplotlib
+from matplotlib import gridspec 
+from pymodules.titan import titanSr
+import glob
+from pymodules.imtools import sigClip
+import os
+
+NSIGMA = 3.  #Default sigma-clipping factor
+
+filename=glob.glob('*.mre')[0]
+
+print "Reading model and observation data from "+filename+'...'
+
+name=os.path.splitext(filename)[0]
+
+f=open(filename)
+filedata = f.readlines()
+header = filedata[0:5]
+data = filedata[5:5+int(header[1].split()[2])]
+f.close()
+
+ndata=int(header[1].split()[2])
+nvar=int(header[1].split()[3])
+print "Nvar = ",nvar
+print "Default sigma-clipping factor = ",NSIGMA
+
+i = [];  wn =[];  model=[];err=[];perr=[]; spec=[]; pdiff=[];
+for line in data: 
+    a,b,c,d,e,f,g = line.split() 
+    i.append(float(a))
+    wn.append(float(b))
+    spec.append(float(c))
+    err.append(float(d))
+    perr.append(float(e))
+    model.append(float(f))
+    pdiff.append(float(g))
+
+fig = plt.figure(figsize=(10.5,10))
+gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+gs.update(hspace=0.0)
+
+def drawplot(nsigma):
+   # Do sigma-clipping (if required), calculate scale factor, and make the figure
+   global sc,specsc,errsc
+   plt.clf()   
+   
+   specma=np.ma.array(spec)
+   
+   if nsigma:
+      # Determine scale factor based on best fit to sigma-clipped spectrum
+      specma=sigClip(np.asarray(spec), nsigma)
+      modelma=np.ma.array(model,mask=specma.mask)
+      sc = np.mean(modelma)/np.mean(specma)
+      print "\nScale factor = ",sc
+      
+   specsc = np.asarray(spec) * sc
+   errsc = np.asarray(err) * sc
+
+   ax=plt.subplot(gs[0])
+   ax.set_title('Observed '+name+' spectrum (scale factor = %.3f) and NEMESIS model' %(sc))
+   ax.get_xaxis().get_major_formatter().set_useOffset(False)
+   #ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
+   #ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1.0))
+   ax.tick_params(labelsize=18)
+   plt.setp(ax.get_xticklabels(), visible=False)
+   #ax.set_ylim(2.5,8.5)
+   ax.plot(wn,specsc,'-k',drawstyle='steps-mid',label='Observation')
+   ax.plot(wn,model,label='Model')
+   ax.set_ylabel('Radiance (nW/m$^2$/sr/cm$^{-1}$)')
+
+   #Highlight the masked (sigma-clipped) points
+   if specma.mask.any():
+      ax.plot(np.asarray(wn)[specma.mask],specsc[specma.mask],'D',markerfacecolor="None",markeredgecolor='red',drawstyle='steps-mid',label='Observation')
+
+   ax2=plt.subplot(gs[1],sharex=ax)
+   #ax2.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.2))
+   ax2.plot(wn,specsc-np.asarray(model),'-k',drawstyle='steps-mid')
+   ax2.plot(wn,np.zeros(ndata),'-r')
+
+   ax2.set_xlabel('Wavenumber (cm$^{-1}$)')
+   ax2.set_ylabel('Residuals')
+   ax2.tick_params(labelsize=18)
+   ax2.set_xlim(np.min(wn),np.max(wn))
+   #ax2.set_ylim(-0.3,0.3)
+   
+   chisq = np.sum((specsc-np.asarray(model))**2/np.asarray(err)**2)
+   DOF = len(spec)-nvar
+   print "Chisq_R = ",chisq / DOF
+   
+   plt.ion()
+   plt.show()
+
+
+drawplot(NSIGMA)
+
+f=open(name+'.spx')
+filedata = f.readlines()
+f.close()
+nrays=int(filedata[2])
+header=filedata[0:3+nrays]
+
+ask = True
+ans = None
+while ask:
+   ans = raw_input("\nWrite scaled spectrum (w), enter new scale factor (n), sigma-clipping factor (s), or exit (x): ")
+   if ans=='n':
+      sc = float(raw_input("\nScale factor: "))
+      drawplot(False)
+      
+   if ans=='s':
+      nsigma = float(raw_input("Sigma-clipping factor (nsigma): "))
+      drawplot(nsigma)
+   
+   if ans=='w':
+      outfile='%s_scaled_%.3f.spx' %(name,sc)
+      fout=open(outfile,'w')                                                                 
+      for line in header:
+          fout.write("%s" % line)
+      for wni,specsci,errsci in zip(wn,specsc,errsc):
+          fout.write("%11.9f  %12.5e  %12.5e\n" % (wni,specsci*1e-9,errsci*1e-9))
+      print "Scaled spectrum written to "+outfile
+      fout.close()
+      ask=False
+
+   if ans=='x':
+      ask=False
+
