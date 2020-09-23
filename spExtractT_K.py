@@ -1,4 +1,5 @@
-#Execute this script inside CASA ising execfile("spExtractT.py")
+#Extract a mean spectrum (in K vs. GHz written as a 2-column ascii file), from a CASA image cube, using a mask that contains a fraction ptile of the total flux in the supplied image channel and rectangular region. 
+#Execute this script inside CASA using execfile("spExtractT.py")
 import numpy as np
 from casa import *
 from scipy.optimize import brentq
